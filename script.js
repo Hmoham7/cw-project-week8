@@ -5,21 +5,36 @@ const DIFFICULTY_SETTINGS = {
     winThreshold: 15,
     duration: 40,
     spawnRate: 1200,
-    missPenalty: 0
+    missPenalty: 0,
+    milestones: [
+      { score: 5, message: 'Great start!' },
+      { score: 8, message: 'Halfway there!' },
+      { score: 12, message: 'Final stretch!' }
+    ]
   },
   normal: {
     label: 'Normal',
     winThreshold: 20,
     duration: 30,
     spawnRate: 1000,
-    missPenalty: 1
+    missPenalty: 1,
+    milestones: [
+      { score: 5, message: 'Great start!' },
+      { score: 10, message: 'Halfway there!' },
+      { score: 15, message: 'Final stretch!' }
+    ]
   },
   hard: {
     label: 'Hard',
     winThreshold: 24,
     duration: 20,
     spawnRate: 700,
-    missPenalty: 2
+    missPenalty: 2,
+    milestones: [
+      { score: 6, message: 'Great start!' },
+      { score: 12, message: 'Halfway there!' },
+      { score: 18, message: 'Final stretch!' }
+    ]
   }
 };
 
@@ -37,6 +52,7 @@ let timerInterval;          // Holds the interval for timer countdown
 let canWasMissed = false;    // Tracks whether the current can was not clicked
 let currentDifficulty = 'normal';
 let audioContext;
+let announcedMilestones = new Set();
 
 const audioEffects = {
   gameStart: new Audio(SOUND_FILES.gameStart),
@@ -123,6 +139,20 @@ function playSparkleSound() {
   }, 45);
 }
 
+function maybeShowMilestoneMessage() {
+  if (!gameActive) return;
+  const config = DIFFICULTY_SETTINGS[currentDifficulty];
+  const achievements = document.getElementById('achievements');
+  if (!config || !achievements || !Array.isArray(config.milestones)) return;
+
+  for (const milestone of config.milestones) {
+    if (currentCans >= milestone.score && !announcedMilestones.has(milestone.score)) {
+      achievements.textContent = `${milestone.message} (${currentCans}/${config.winThreshold})`;
+      announcedMilestones.add(milestone.score);
+    }
+  }
+}
+
 // Creates the 3x3 game grid where items will appear
 function createGrid() {
   const grid = document.querySelector('.game-grid');
@@ -180,6 +210,7 @@ function spawnWaterCan() {
       if (scoreDisplay) {
         scoreDisplay.textContent = currentCans;
       }
+      maybeShowMilestoneMessage();
 
       // Make collection obvious before removing from the DOM.
       waterCan.classList.add('collected');
@@ -234,6 +265,7 @@ function startGame() {
   setDifficultyLocked(true);
   playSoundEffect('gameStart');
   currentCans = 0;
+  announcedMilestones = new Set();
   canWasMissed = false;
   timer = config.duration; // Reset timer
   createGrid(); // Set up the game grid
@@ -283,6 +315,7 @@ function resetGame() {
   clearInterval(timerInterval);
 
   currentCans = 0;
+  announcedMilestones = new Set();
   timer = DIFFICULTY_SETTINGS[currentDifficulty].duration;
   createGrid();
 
