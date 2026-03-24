@@ -1,12 +1,35 @@
 // Game configuration and state variables
-const GOAL_CANS = 25;        // Total items needed to collect
-const WIN_THRESHOLD = 20;    // Minimum score needed to win
+const DIFFICULTY_SETTINGS = {
+  easy: {
+    label: 'Easy',
+    winThreshold: 15,
+    duration: 40,
+    spawnRate: 1200,
+    missPenalty: 0
+  },
+  normal: {
+    label: 'Normal',
+    winThreshold: 20,
+    duration: 30,
+    spawnRate: 1000,
+    missPenalty: 1
+  },
+  hard: {
+    label: 'Hard',
+    winThreshold: 24,
+    duration: 20,
+    spawnRate: 700,
+    missPenalty: 2
+  }
+};
+
 let currentCans = 0;         // Current number of items collected
 let gameActive = false;      // Tracks if game is currently running
 let spawnInterval;          // Holds the interval for spawning items
-let timer = 30;             // Timer in seconds
+let timer = DIFFICULTY_SETTINGS.normal.duration; // Timer in seconds
 let timerInterval;          // Holds the interval for timer countdown
 let canWasMissed = false;    // Tracks whether the current can was not clicked
+let currentDifficulty = 'normal';
 
 const winningMessages = [
   'Great job! You kept the village hydrated!',
@@ -33,15 +56,17 @@ function createGrid() {
 
 // Ensure the grid is created when the page loads
 createGrid();
+updateInstructionText();
 
 // Spawns a new item in a random grid cell
 function spawnWaterCan() {
   if (!gameActive) return; // Stop if the game is not active
   const cells = document.querySelectorAll('.grid-cell');
+  const difficultyConfig = DIFFICULTY_SETTINGS[currentDifficulty];
 
   // If the previous can was not clicked before respawn, apply a miss penalty.
-  if (canWasMissed) {
-    currentCans = Math.max(0, currentCans - 1);
+  if (canWasMissed && difficultyConfig.missPenalty > 0) {
+    currentCans = Math.max(0, currentCans - difficultyConfig.missPenalty);
     const scoreDisplay = document.getElementById('current-cans');
     if (scoreDisplay) scoreDisplay.textContent = currentCans;
   }
@@ -79,19 +104,44 @@ function spawnWaterCan() {
   }
 }
 
+function updateInstructionText() {
+  const instruction = document.getElementById('game-instructions');
+  const config = DIFFICULTY_SETTINGS[currentDifficulty];
+  if (!instruction || !config) return;
+  instruction.textContent = `Difficulty: ${config.label} - Collect ${config.winThreshold} cans in ${config.duration} seconds to win!`;
+}
+
+function setDifficulty(mode) {
+  if (!DIFFICULTY_SETTINGS[mode]) return;
+  currentDifficulty = mode;
+  updateInstructionText();
+
+  if (!gameActive) {
+    timer = DIFFICULTY_SETTINGS[currentDifficulty].duration;
+    const timerDisplay = document.getElementById('timer');
+    if (timerDisplay) timerDisplay.textContent = timer;
+  }
+}
+
 // Initializes and starts a new game
 function startGame() {
   if (gameActive) return; // Prevent starting a new game if one is already active
+  const difficultyMode = document.getElementById('difficulty-mode');
+  if (difficultyMode) {
+    setDifficulty(difficultyMode.value);
+  }
+
+  const config = DIFFICULTY_SETTINGS[currentDifficulty];
   gameActive = true;
   currentCans = 0;
   canWasMissed = false;
-  timer = 30; // Reset timer
+  timer = config.duration; // Reset timer
   createGrid(); // Set up the game grid
   const scoreDisplay = document.getElementById('current-cans');
   if (scoreDisplay) scoreDisplay.textContent = currentCans;
   const achievements = document.getElementById('achievements');
   if (achievements) achievements.textContent = '';
-  spawnInterval = setInterval(spawnWaterCan, 1000); // Spawn water cans every second
+  spawnInterval = setInterval(spawnWaterCan, config.spawnRate); // Spawn water cans based on difficulty
   // Start timer countdown
   const timerDisplay = document.getElementById('timer');
   if (timerDisplay) timerDisplay.textContent = timer;
@@ -110,13 +160,15 @@ function endGame() {
   clearInterval(spawnInterval); // Stop spawning water cans
   clearInterval(timerInterval); // Stop timer countdown
 
-  const messagePool = currentCans >= WIN_THRESHOLD ? winningMessages : losingMessages;
+  const config = DIFFICULTY_SETTINGS[currentDifficulty];
+  const messagePool = currentCans >= config.winThreshold ? winningMessages : losingMessages;
   const randomMessage = messagePool[Math.floor(Math.random() * messagePool.length)];
+  const resultPrefix = `(${config.label} mode) Score: ${currentCans}/${config.winThreshold}. `;
   const achievements = document.getElementById('achievements');
   if (achievements) {
-    achievements.textContent = randomMessage;
+    achievements.textContent = resultPrefix + randomMessage;
   } else {
-    alert(randomMessage);
+    alert(resultPrefix + randomMessage);
   }
 }
 
@@ -127,7 +179,7 @@ function resetGame() {
   clearInterval(timerInterval);
 
   currentCans = 0;
-  timer = 30;
+  timer = DIFFICULTY_SETTINGS[currentDifficulty].duration;
   createGrid();
 
   const scoreDisplay = document.getElementById('current-cans');
@@ -138,8 +190,17 @@ function resetGame() {
 
   const achievements = document.getElementById('achievements');
   if (achievements) achievements.textContent = '';
+
+  updateInstructionText();
 }
 
 // Set up click handler for the start button
 document.getElementById('start-game').addEventListener('click', startGame);
 document.getElementById('reset-game').addEventListener('click', resetGame);
+
+const difficultyMode = document.getElementById('difficulty-mode');
+if (difficultyMode) {
+  difficultyMode.addEventListener('change', event => {
+    setDifficulty(event.target.value);
+  });
+}

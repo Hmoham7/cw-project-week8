@@ -38,6 +38,32 @@ h1,
   text-align: center;
 }
 
+.difficulty-picker {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.difficulty-picker label {
+  font-weight: 700;
+}
+
+.difficulty-picker select {
+  padding: 8px 12px;
+  border: 2px solid rgba(46, 157, 247, 0.4);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.difficulty-picker select:focus-visible {
+  outline: 3px solid rgba(46, 157, 247, 0.35);
+  outline-offset: 2px;
+}
+
 .brand-header {
   display: flex;
   flex-direction: column;
@@ -186,6 +212,11 @@ button:active {
     flex-direction: column;
     align-items: center;
     gap: 10px;
+  }
+
+  .difficulty-picker {
+    flex-direction: column;
+    gap: 6px;
   }
 
   .water-can-wrapper {

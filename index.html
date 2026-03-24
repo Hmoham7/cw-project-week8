@@ -12,7 +12,15 @@
       <img class="brand-logo" src="img/cw_logo_horizontal.png" alt="charity: water logo">
       <h1>Water Quest</h1>
     </header>
-    <p class="game-instructions">Collect 20 items to complete the game!</p>
+    <div class="difficulty-picker">
+      <label for="difficulty-mode">Difficulty:</label>
+      <select id="difficulty-mode" aria-label="Select game difficulty">
+        <option value="easy">Easy</option>
+        <option value="normal" selected>Normal</option>
+        <option value="hard">Hard</option>
+      </select>
+    </div>
+    <p id="game-instructions" class="game-instructions">Collect 20 items in 30 seconds to win!</p>
     <div class="stats">
       <p>Cans Collected: <span id="current-cans">0</span></p>
       <p>Time Left: <span id="timer">30</span>s</p>
