@@ -23,6 +23,12 @@ const DIFFICULTY_SETTINGS = {
   }
 };
 
+const SOUND_FILES = {
+  gameStart: 'img/foxboytails-game-start-317318.mp3',
+  gameWin: 'img/superpuyofans1234-winner-game-sound-404167.mp3',
+  gameEnd: 'img/alphix-game-over-417465.mp3'
+};
+
 let currentCans = 0;         // Current number of items collected
 let gameActive = false;      // Tracks if game is currently running
 let spawnInterval;          // Holds the interval for spawning items
@@ -30,6 +36,17 @@ let timer = DIFFICULTY_SETTINGS.normal.duration; // Timer in seconds
 let timerInterval;          // Holds the interval for timer countdown
 let canWasMissed = false;    // Tracks whether the current can was not clicked
 let currentDifficulty = 'normal';
+let audioContext;
+
+const audioEffects = {
+  gameStart: new Audio(SOUND_FILES.gameStart),
+  gameWin: new Audio(SOUND_FILES.gameWin),
+  gameEnd: new Audio(SOUND_FILES.gameEnd)
+};
+
+audioEffects.gameStart.volume = 0.35;
+audioEffects.gameWin.volume = 0.45;
+audioEffects.gameEnd.volume = 0.35;
 
 const winningMessages = [
   'Great job! You kept the village hydrated!',
@@ -42,6 +59,69 @@ const losingMessages = [
   'So close. Try again and beat your score!',
   'Keep going! You can reach 20 next round!'
 ];
+
+function getAudioContext() {
+  if (!audioContext) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+    audioContext = new AudioContextClass();
+  }
+  return audioContext;
+}
+
+function playSoundEffect(effectName) {
+  const effect = audioEffects[effectName];
+  if (!effect) return;
+  const playback = effect.cloneNode();
+  playback.volume = effect.volume;
+  playback.play().catch(() => {
+    // Ignore blocked autoplay attempts.
+  });
+}
+
+function playTone({ frequency, duration, gain = 0.05, type = 'sine', rampTo = 0 }) {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  if (ctx.state === 'suspended') {
+    ctx.resume().catch(() => {
+      // Resume can fail when browser blocks audio; keep game playable.
+    });
+  }
+
+  const now = ctx.currentTime;
+  const oscillator = ctx.createOscillator();
+  const gainNode = ctx.createGain();
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, now);
+  gainNode.gain.setValueAtTime(0.0001, now);
+  gainNode.gain.exponentialRampToValueAtTime(gain, now + 0.01);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+  if (rampTo > 0) {
+    oscillator.frequency.exponentialRampToValueAtTime(rampTo, now + duration);
+  }
+
+  oscillator.connect(gainNode);
+  gainNode.connect(ctx.destination);
+  oscillator.start(now);
+  oscillator.stop(now + duration + 0.02);
+}
+
+function playButtonClickSound() {
+  playTone({ frequency: 420, duration: 0.08, gain: 0.04, type: 'triangle', rampTo: 520 });
+}
+
+function playMissSound() {
+  playTone({ frequency: 220, duration: 0.12, gain: 0.045, type: 'sawtooth', rampTo: 170 });
+}
+
+function playSparkleSound() {
+  playTone({ frequency: 1080, duration: 0.09, gain: 0.03, type: 'triangle', rampTo: 1360 });
+  window.setTimeout(() => {
+    playTone({ frequency: 1520, duration: 0.07, gain: 0.02, type: 'sine', rampTo: 1880 });
+  }, 45);
+}
 
 // Creates the 3x3 game grid where items will appear
 function createGrid() {
@@ -69,6 +149,7 @@ function spawnWaterCan() {
     currentCans = Math.max(0, currentCans - difficultyConfig.missPenalty);
     const scoreDisplay = document.getElementById('current-cans');
     if (scoreDisplay) scoreDisplay.textContent = currentCans;
+    playMissSound();
   }
   
   // Clear all cells before spawning a new water can
@@ -93,6 +174,7 @@ function spawnWaterCan() {
       if (!gameActive || waterCan.classList.contains('collected')) return;
       canWasMissed = false;
       currentCans += 1; // Increment score
+      playSparkleSound();
       // Optionally update score display if present
       const scoreDisplay = document.getElementById('current-cans');
       if (scoreDisplay) {
@@ -150,6 +232,7 @@ function startGame() {
   const config = DIFFICULTY_SETTINGS[currentDifficulty];
   gameActive = true;
   setDifficultyLocked(true);
+  playSoundEffect('gameStart');
   currentCans = 0;
   canWasMissed = false;
   timer = config.duration; // Reset timer
@@ -179,9 +262,11 @@ function endGame() {
   clearInterval(timerInterval); // Stop timer countdown
 
   const config = DIFFICULTY_SETTINGS[currentDifficulty];
+  const hasWon = currentCans >= config.winThreshold;
   const messagePool = currentCans >= config.winThreshold ? winningMessages : losingMessages;
   const randomMessage = messagePool[Math.floor(Math.random() * messagePool.length)];
   const resultPrefix = `(${config.label} mode) Score: ${currentCans}/${config.winThreshold}. `;
+  playSoundEffect(hasWon ? 'gameWin' : 'gameEnd');
   const achievements = document.getElementById('achievements');
   if (achievements) {
     achievements.textContent = resultPrefix + randomMessage;
@@ -214,8 +299,14 @@ function resetGame() {
 }
 
 // Set up click handler for the start button
-document.getElementById('start-game').addEventListener('click', startGame);
-document.getElementById('reset-game').addEventListener('click', resetGame);
+document.getElementById('start-game').addEventListener('click', () => {
+  playButtonClickSound();
+  startGame();
+});
+document.getElementById('reset-game').addEventListener('click', () => {
+  playButtonClickSound();
+  resetGame();
+});
 
 const difficultyMode = document.getElementById('difficulty-mode');
 if (difficultyMode) {
