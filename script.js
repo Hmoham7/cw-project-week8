@@ -88,9 +88,9 @@ function spawnWaterCan() {
   // Add click event to the water can for +1 point
   const waterCan = randomCell.querySelector('.water-can');
   if (waterCan) {
-    waterCan.addEventListener('click', function handleCanClick(e) {
+    waterCan.addEventListener('click', function handleCanClick() {
       // Prevent multiple clicks on the same can
-      if (!gameActive) return;
+      if (!gameActive || waterCan.classList.contains('collected')) return;
       canWasMissed = false;
       currentCans += 1; // Increment score
       // Optionally update score display if present
@@ -98,8 +98,18 @@ function spawnWaterCan() {
       if (scoreDisplay) {
         scoreDisplay.textContent = currentCans;
       }
-      // Remove the can after click
-      waterCan.parentElement.remove();
+
+      // Make collection obvious before removing from the DOM.
+      waterCan.classList.add('collected');
+      const wrapper = waterCan.parentElement;
+      if (wrapper) {
+        wrapper.classList.add('collected-wrapper');
+        window.setTimeout(() => {
+          if (wrapper.isConnected) {
+            wrapper.remove();
+          }
+        }, 250);
+      }
     });
   }
 }
@@ -123,6 +133,12 @@ function setDifficulty(mode) {
   }
 }
 
+function setDifficultyLocked(locked) {
+  const difficultyMode = document.getElementById('difficulty-mode');
+  if (!difficultyMode) return;
+  difficultyMode.disabled = locked;
+}
+
 // Initializes and starts a new game
 function startGame() {
   if (gameActive) return; // Prevent starting a new game if one is already active
@@ -133,6 +149,7 @@ function startGame() {
 
   const config = DIFFICULTY_SETTINGS[currentDifficulty];
   gameActive = true;
+  setDifficultyLocked(true);
   currentCans = 0;
   canWasMissed = false;
   timer = config.duration; // Reset timer
@@ -157,6 +174,7 @@ function startGame() {
 function endGame() {
   if (!gameActive) return;
   gameActive = false; // Mark the game as inactive
+  setDifficultyLocked(false);
   clearInterval(spawnInterval); // Stop spawning water cans
   clearInterval(timerInterval); // Stop timer countdown
 
@@ -174,6 +192,7 @@ function endGame() {
 
 function resetGame() {
   gameActive = false;
+  setDifficultyLocked(false);
   canWasMissed = false;
   clearInterval(spawnInterval);
   clearInterval(timerInterval);

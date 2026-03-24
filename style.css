@@ -64,6 +64,12 @@ h1,
   outline-offset: 2px;
 }
 
+.difficulty-picker select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: #eef3f8;
+}
+
 .brand-header {
   display: flex;
   flex-direction: column;
@@ -150,12 +156,44 @@ h1 {
   animation: popUp 0.5s cubic-bezier(0.17, 0.67, 0.34, 2);
 }
 
+.water-can.collected {
+  pointer-events: none;
+  animation: collectCan 0.25s ease-out forwards;
+}
+
+.water-can-wrapper.collected-wrapper {
+  animation: collectFlash 0.25s ease-out;
+}
+
 @keyframes popUp {
   from {
     transform: scale(0.5);
   }
   to {
     transform: scale(1);
+  }
+}
+
+@keyframes collectCan {
+  0% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.2) rotate(18deg);
+  }
+}
+
+@keyframes collectFlash {
+  0% {
+    box-shadow: 0 0 0 rgba(255, 201, 7, 0);
+  }
+  35% {
+    box-shadow: 0 0 22px rgba(255, 201, 7, 0.85);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(255, 201, 7, 0);
   }
 }
 
