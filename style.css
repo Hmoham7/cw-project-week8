@@ -228,6 +228,22 @@ button:active {
   margin-top: 30px;
 }
 
+.site-footer {
+  margin-top: 20px;
+  text-align: center;
+  color: #33485d;
+  font-size: 0.95rem;
+}
+
+.site-footer a {
+  color: #0b6fbd;
+  font-weight: 700;
+}
+
+.site-footer a:hover {
+  color: #085f9f;
+}
+
 #reset-game {
   background: #1d2733;
 }
