@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>Water Quest</title>
+  <link href="style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+  <div class="container">
+    <header class="brand-header">
+      <img class="brand-logo" src="img/cw_logo_horizontal.png" alt="charity: water logo">
+      <h1>Water Quest</h1>
+    </header>
+    <p class="game-instructions">Collect 20 items to complete the game!</p>
+    <div class="stats">
+      <p>Cans Collected: <span id="current-cans">0</span></p>
+      <p>Time Left: <span id="timer">30</span>s</p>
+    </div>
+    <div id="achievements" class="achievement"></div>
+    <div class="game-grid"></div>
+    <div class="controls">
+      <button id="start-game">Start Game</button>
+      <button id="reset-game" type="button">Reset Game</button>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
