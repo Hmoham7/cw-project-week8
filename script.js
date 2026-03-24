@@ -1,4 +1,6 @@
-// Game configuration and state variables
+// ----------------------------
+// 1) Game settings
+// ----------------------------
 const DIFFICULTY_SETTINGS = {
   easy: {
     label: 'Easy',
@@ -44,15 +46,46 @@ const SOUND_FILES = {
   gameEnd: 'img/alphix-game-over-417465.mp3'
 };
 
-let currentCans = 0;         // Current number of items collected
-let gameActive = false;      // Tracks if game is currently running
-let spawnInterval;          // Holds the interval for spawning items
-let timer = DIFFICULTY_SETTINGS.normal.duration; // Timer in seconds
-let timerInterval;          // Holds the interval for timer countdown
-let canWasMissed = false;    // Tracks whether the current can was not clicked
-let currentDifficulty = 'normal';
-let audioContext;
-let announcedMilestones = new Set();
+const WIN_MESSAGES = [
+  'Great job! You kept the village hydrated!',
+  'Victory! You crushed the water quest!',
+  'Awesome work! Mission complete!'
+];
+
+const LOSE_MESSAGES = [
+  'Nice try! Play again and collect a few more cans!',
+  'So close. Try again and beat your score!',
+  'Keep going! You can reach 20 next round!'
+];
+
+// ----------------------------
+// 2) DOM references
+// ----------------------------
+const ui = {
+  grid: document.querySelector('.game-grid'),
+  score: document.getElementById('current-cans'),
+  timer: document.getElementById('timer'),
+  achievements: document.getElementById('achievements'),
+  instructions: document.getElementById('game-instructions'),
+  difficulty: document.getElementById('difficulty-mode'),
+  startButton: document.getElementById('start-game'),
+  resetButton: document.getElementById('reset-game')
+};
+
+// ----------------------------
+// 3) Mutable game state
+// ----------------------------
+const state = {
+  score: 0,
+  timeLeft: DIFFICULTY_SETTINGS.normal.duration,
+  difficulty: 'normal',
+  gameActive: false,
+  missedLastCan: false,
+  announcedMilestones: new Set(),
+  spawnIntervalId: null,
+  timerIntervalId: null,
+  audioContext: null
+};
 
 const audioEffects = {
   gameStart: new Audio(SOUND_FILES.gameStart),
@@ -64,30 +97,74 @@ audioEffects.gameStart.volume = 0.35;
 audioEffects.gameWin.volume = 0.45;
 audioEffects.gameEnd.volume = 0.35;
 
-const winningMessages = [
-  'Great job! You kept the village hydrated!',
-  'Victory! You crushed the water quest!',
-  'Awesome work! Mission complete!'
-];
+// ----------------------------
+// 4) Small helpers
+// ----------------------------
+function getConfig() {
+  return DIFFICULTY_SETTINGS[state.difficulty];
+}
 
-const losingMessages = [
-  'Nice try! Play again and collect a few more cans!',
-  'So close. Try again and beat your score!',
-  'Keep going! You can reach 20 next round!'
-];
+function randomItem(list) {
+  return list[Math.floor(Math.random() * list.length)];
+}
 
+function clearIntervals() {
+  clearInterval(state.spawnIntervalId);
+  clearInterval(state.timerIntervalId);
+}
+
+function lockDifficulty(isLocked) {
+  if (ui.difficulty) ui.difficulty.disabled = isLocked;
+}
+
+function updateScoreDisplay() {
+  if (ui.score) ui.score.textContent = state.score;
+}
+
+function updateTimerDisplay() {
+  if (ui.timer) ui.timer.textContent = state.timeLeft;
+}
+
+function updateInstructionText() {
+  const config = getConfig();
+  if (!ui.instructions || !config) return;
+  ui.instructions.textContent =
+    `Difficulty: ${config.label} - Collect ${config.winThreshold} cans in ${config.duration} seconds to win!`;
+}
+
+function createGrid() {
+  if (!ui.grid) return;
+  ui.grid.innerHTML = '';
+  for (let i = 0; i < 9; i += 1) {
+    const cell = document.createElement('div');
+    cell.className = 'grid-cell';
+    ui.grid.appendChild(cell);
+  }
+}
+
+function clearCansFromGrid() {
+  if (!ui.grid) return;
+  ui.grid.querySelectorAll('.grid-cell').forEach(cell => {
+    cell.innerHTML = '';
+  });
+}
+
+// ----------------------------
+// 5) Audio
+// ----------------------------
 function getAudioContext() {
-  if (!audioContext) {
+  if (!state.audioContext) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return null;
-    audioContext = new AudioContextClass();
+    state.audioContext = new AudioContextClass();
   }
-  return audioContext;
+  return state.audioContext;
 }
 
 function playSoundEffect(effectName) {
   const effect = audioEffects[effectName];
   if (!effect) return;
+
   const playback = effect.cloneNode();
   playback.volume = effect.volume;
   playback.play().catch(() => {
@@ -101,15 +178,17 @@ function playTone({ frequency, duration, gain = 0.05, type = 'sine', rampTo = 0 
 
   if (ctx.state === 'suspended') {
     ctx.resume().catch(() => {
-      // Resume can fail when browser blocks audio; keep game playable.
+      // Ignore resume errors to keep the game running.
     });
   }
 
   const now = ctx.currentTime;
   const oscillator = ctx.createOscillator();
   const gainNode = ctx.createGain();
+
   oscillator.type = type;
   oscillator.frequency.setValueAtTime(frequency, now);
+
   gainNode.gain.setValueAtTime(0.0001, now);
   gainNode.gain.exponentialRampToValueAtTime(gain, now + 0.01);
   gainNode.gain.exponentialRampToValueAtTime(0.0001, now + duration);
@@ -139,211 +218,172 @@ function playSparkleSound() {
   }, 45);
 }
 
-function maybeShowMilestoneMessage() {
-  if (!gameActive) return;
-  const config = DIFFICULTY_SETTINGS[currentDifficulty];
-  const achievements = document.getElementById('achievements');
-  if (!config || !achievements || !Array.isArray(config.milestones)) return;
+// ----------------------------
+// 6) Game flow
+// ----------------------------
+function showMilestoneMessageIfNeeded() {
+  const config = getConfig();
+  if (!state.gameActive || !ui.achievements || !Array.isArray(config.milestones)) return;
 
   for (const milestone of config.milestones) {
-    if (currentCans >= milestone.score && !announcedMilestones.has(milestone.score)) {
-      achievements.textContent = `${milestone.message} (${currentCans}/${config.winThreshold})`;
-      announcedMilestones.add(milestone.score);
+    if (state.score >= milestone.score && !state.announcedMilestones.has(milestone.score)) {
+      ui.achievements.textContent = `${milestone.message} (${state.score}/${config.winThreshold})`;
+      state.announcedMilestones.add(milestone.score);
     }
   }
 }
 
-// Creates the 3x3 game grid where items will appear
-function createGrid() {
-  const grid = document.querySelector('.game-grid');
-  grid.innerHTML = ''; // Clear any existing grid cells
-  for (let i = 0; i < 9; i++) {
-    const cell = document.createElement('div');
-    cell.className = 'grid-cell'; // Each cell represents a grid square
-    grid.appendChild(cell);
-  }
+function applyMissPenaltyIfNeeded() {
+  const config = getConfig();
+  if (!state.missedLastCan || config.missPenalty <= 0) return;
+
+  state.score = Math.max(0, state.score - config.missPenalty);
+  updateScoreDisplay();
+  playMissSound();
 }
 
-// Ensure the grid is created when the page loads
-createGrid();
-updateInstructionText();
-
-// Spawns a new item in a random grid cell
 function spawnWaterCan() {
-  if (!gameActive) return; // Stop if the game is not active
-  const cells = document.querySelectorAll('.grid-cell');
-  const difficultyConfig = DIFFICULTY_SETTINGS[currentDifficulty];
+  if (!state.gameActive || !ui.grid) return;
 
-  // If the previous can was not clicked before respawn, apply a miss penalty.
-  if (canWasMissed && difficultyConfig.missPenalty > 0) {
-    currentCans = Math.max(0, currentCans - difficultyConfig.missPenalty);
-    const scoreDisplay = document.getElementById('current-cans');
-    if (scoreDisplay) scoreDisplay.textContent = currentCans;
-    playMissSound();
-  }
-  
-  // Clear all cells before spawning a new water can
-  cells.forEach(cell => (cell.innerHTML = ''));
+  applyMissPenaltyIfNeeded();
+  clearCansFromGrid();
 
-  // Select a random cell from the grid to place the water can
-  const randomCell = cells[Math.floor(Math.random() * cells.length)];
+  const cells = ui.grid.querySelectorAll('.grid-cell');
+  const randomCell = randomItem(Array.from(cells));
+  if (!randomCell) return;
 
-  // Use a template literal to create the wrapper and water-can element
-  randomCell.innerHTML = `
-    <div class="water-can-wrapper">
-      <div class="water-can"></div>
-    </div>
-  `;
-  canWasMissed = true;
+  const wrapper = document.createElement('div');
+  wrapper.className = 'water-can-wrapper';
 
-  // Add click event to the water can for +1 point
-  const waterCan = randomCell.querySelector('.water-can');
-  if (waterCan) {
-    waterCan.addEventListener('click', function handleCanClick() {
-      // Prevent multiple clicks on the same can
-      if (!gameActive || waterCan.classList.contains('collected')) return;
-      canWasMissed = false;
-      currentCans += 1; // Increment score
-      playSparkleSound();
-      // Optionally update score display if present
-      const scoreDisplay = document.getElementById('current-cans');
-      if (scoreDisplay) {
-        scoreDisplay.textContent = currentCans;
-      }
-      maybeShowMilestoneMessage();
+  const waterCan = document.createElement('div');
+  waterCan.className = 'water-can';
 
-      // Make collection obvious before removing from the DOM.
-      waterCan.classList.add('collected');
-      const wrapper = waterCan.parentElement;
-      if (wrapper) {
-        wrapper.classList.add('collected-wrapper');
-        window.setTimeout(() => {
-          if (wrapper.isConnected) {
-            wrapper.remove();
-          }
-        }, 250);
-      }
-    });
-  }
-}
+  wrapper.appendChild(waterCan);
+  randomCell.appendChild(wrapper);
+  state.missedLastCan = true;
 
-function updateInstructionText() {
-  const instruction = document.getElementById('game-instructions');
-  const config = DIFFICULTY_SETTINGS[currentDifficulty];
-  if (!instruction || !config) return;
-  instruction.textContent = `Difficulty: ${config.label} - Collect ${config.winThreshold} cans in ${config.duration} seconds to win!`;
+  waterCan.addEventListener('click', () => {
+    if (!state.gameActive || waterCan.classList.contains('collected')) return;
+
+    state.missedLastCan = false;
+    state.score += 1;
+    updateScoreDisplay();
+    showMilestoneMessageIfNeeded();
+    playSparkleSound();
+
+    waterCan.classList.add('collected');
+    wrapper.classList.add('collected-wrapper');
+
+    window.setTimeout(() => {
+      if (wrapper.isConnected) wrapper.remove();
+    }, 250);
+  });
 }
 
 function setDifficulty(mode) {
   if (!DIFFICULTY_SETTINGS[mode]) return;
-  currentDifficulty = mode;
+
+  state.difficulty = mode;
   updateInstructionText();
 
-  if (!gameActive) {
-    timer = DIFFICULTY_SETTINGS[currentDifficulty].duration;
-    const timerDisplay = document.getElementById('timer');
-    if (timerDisplay) timerDisplay.textContent = timer;
+  if (!state.gameActive) {
+    state.timeLeft = getConfig().duration;
+    updateTimerDisplay();
   }
 }
 
-function setDifficultyLocked(locked) {
-  const difficultyMode = document.getElementById('difficulty-mode');
-  if (!difficultyMode) return;
-  difficultyMode.disabled = locked;
-}
-
-// Initializes and starts a new game
 function startGame() {
-  if (gameActive) return; // Prevent starting a new game if one is already active
-  const difficultyMode = document.getElementById('difficulty-mode');
-  if (difficultyMode) {
-    setDifficulty(difficultyMode.value);
+  if (state.gameActive) return;
+
+  if (ui.difficulty) {
+    setDifficulty(ui.difficulty.value);
   }
 
-  const config = DIFFICULTY_SETTINGS[currentDifficulty];
-  gameActive = true;
-  setDifficultyLocked(true);
+  const config = getConfig();
+  state.gameActive = true;
+  state.score = 0;
+  state.timeLeft = config.duration;
+  state.missedLastCan = false;
+  state.announcedMilestones = new Set();
+
+  lockDifficulty(true);
+  clearIntervals();
+  createGrid();
+  updateScoreDisplay();
+  updateTimerDisplay();
+  if (ui.achievements) ui.achievements.textContent = '';
+
   playSoundEffect('gameStart');
-  currentCans = 0;
-  announcedMilestones = new Set();
-  canWasMissed = false;
-  timer = config.duration; // Reset timer
-  createGrid(); // Set up the game grid
-  const scoreDisplay = document.getElementById('current-cans');
-  if (scoreDisplay) scoreDisplay.textContent = currentCans;
-  const achievements = document.getElementById('achievements');
-  if (achievements) achievements.textContent = '';
-  spawnInterval = setInterval(spawnWaterCan, config.spawnRate); // Spawn water cans based on difficulty
-  // Start timer countdown
-  const timerDisplay = document.getElementById('timer');
-  if (timerDisplay) timerDisplay.textContent = timer;
-  timerInterval = setInterval(() => {
-    timer--;
-    if (timerDisplay) timerDisplay.textContent = timer;
-    if (timer <= 0) {
-      endGame();
-    }
+
+  state.spawnIntervalId = setInterval(spawnWaterCan, config.spawnRate);
+  state.timerIntervalId = setInterval(() => {
+    state.timeLeft -= 1;
+    updateTimerDisplay();
+    if (state.timeLeft <= 0) endGame();
   }, 1000);
 }
 
 function endGame() {
-  if (!gameActive) return;
-  gameActive = false; // Mark the game as inactive
-  setDifficultyLocked(false);
-  clearInterval(spawnInterval); // Stop spawning water cans
-  clearInterval(timerInterval); // Stop timer countdown
+  if (!state.gameActive) return;
 
-  const config = DIFFICULTY_SETTINGS[currentDifficulty];
-  const hasWon = currentCans >= config.winThreshold;
-  const messagePool = currentCans >= config.winThreshold ? winningMessages : losingMessages;
-  const randomMessage = messagePool[Math.floor(Math.random() * messagePool.length)];
-  const resultPrefix = `(${config.label} mode) Score: ${currentCans}/${config.winThreshold}. `;
+  state.gameActive = false;
+  clearIntervals();
+  lockDifficulty(false);
+
+  const config = getConfig();
+  const hasWon = state.score >= config.winThreshold;
+  const pool = hasWon ? WIN_MESSAGES : LOSE_MESSAGES;
+  const resultPrefix = `(${config.label} mode) Score: ${state.score}/${config.winThreshold}. `;
+  const resultText = resultPrefix + randomItem(pool);
+
   playSoundEffect(hasWon ? 'gameWin' : 'gameEnd');
-  const achievements = document.getElementById('achievements');
-  if (achievements) {
-    achievements.textContent = resultPrefix + randomMessage;
+
+  if (ui.achievements) {
+    ui.achievements.textContent = resultText;
   } else {
-    alert(resultPrefix + randomMessage);
+    alert(resultText);
   }
 }
 
 function resetGame() {
-  gameActive = false;
-  setDifficultyLocked(false);
-  canWasMissed = false;
-  clearInterval(spawnInterval);
-  clearInterval(timerInterval);
+  state.gameActive = false;
+  state.score = 0;
+  state.missedLastCan = false;
+  state.announcedMilestones = new Set();
+  state.timeLeft = getConfig().duration;
 
-  currentCans = 0;
-  announcedMilestones = new Set();
-  timer = DIFFICULTY_SETTINGS[currentDifficulty].duration;
+  clearIntervals();
+  lockDifficulty(false);
   createGrid();
-
-  const scoreDisplay = document.getElementById('current-cans');
-  if (scoreDisplay) scoreDisplay.textContent = currentCans;
-
-  const timerDisplay = document.getElementById('timer');
-  if (timerDisplay) timerDisplay.textContent = timer;
-
-  const achievements = document.getElementById('achievements');
-  if (achievements) achievements.textContent = '';
-
+  updateScoreDisplay();
+  updateTimerDisplay();
   updateInstructionText();
+
+  if (ui.achievements) ui.achievements.textContent = '';
 }
 
-// Set up click handler for the start button
-document.getElementById('start-game').addEventListener('click', () => {
-  playButtonClickSound();
-  startGame();
-});
-document.getElementById('reset-game').addEventListener('click', () => {
-  playButtonClickSound();
-  resetGame();
-});
+// ----------------------------
+// 7) Event listeners + startup
+// ----------------------------
+if (ui.startButton) {
+  ui.startButton.addEventListener('click', () => {
+    playButtonClickSound();
+    startGame();
+  });
+}
 
-const difficultyMode = document.getElementById('difficulty-mode');
-if (difficultyMode) {
-  difficultyMode.addEventListener('change', event => {
+if (ui.resetButton) {
+  ui.resetButton.addEventListener('click', () => {
+    playButtonClickSound();
+    resetGame();
+  });
+}
+
+if (ui.difficulty) {
+  ui.difficulty.addEventListener('change', event => {
     setDifficulty(event.target.value);
   });
 }
+
+createGrid();
+setDifficulty(state.difficulty);
